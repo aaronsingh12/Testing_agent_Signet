@@ -13,7 +13,7 @@ const ROLES = new Set(['user', 'assistant']);
  */
 export function prepareMessages(messages) {
   if (!Array.isArray(messages) || messages.length === 0) {
-    throw new AppError('`messages` must be a non-empty array of { role, content }.', 400);
+    throw new AppError('Send `messages` (a non-empty array of { role, content }) or `input` (a string).', 400);
   }
 
   const cleaned = [];

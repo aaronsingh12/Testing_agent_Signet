@@ -101,6 +101,7 @@ basic-agent/
 │       ├── auth.js           # ACCESS_TOKENS check; API stays off on a public HOST without tokens
 │       ├── routes/
 │       │   ├── chat.js       # POST /api/chat (SSE or JSON)
+│       │   ├── agents.js     # GET /api/agents, POST /api/agents/:id/chat (for Signet etc.)
 │       │   └── providers.js  # GET /api/providers, /api/providers/:id/models
 │       └── providers/
 │           ├── index.js      # provider registry
@@ -180,9 +181,48 @@ Only set `CORS_ORIGIN` if a browser on another site must call the API directly. 
 
 ---
 
+## Connect to Signet (or another agent platform)
+
+Agent platforms discover agents over REST, then call them. This server lists **one agent per provider that is ready** (API key set, or Ollama running). With only `GROQ_API_KEY` set, that is a single agent, `basic-agent-groq`.
+
+**1. Make a token just for Signet** so you can revoke it on its own. Generate one with the command in [Deploy to Railway](#deploy-to-railway), add it to `ACCESS_TOKENS` in Railway (comma-separated, e.g. `ACCESS_TOKENS=<you>,<other-project>,<signet>`), and deploy.
+
+**2. In Signet:** Agents → onboard → **REST API**:
+
+| Field | Value |
+|---|---|
+| Base URL | `https://<your-app>.up.railway.app/api` |
+| API key / secret | the Signet token from step 1 |
+
+**3. API settings and endpoint mapping** (only change what Signet asks for):
+
+| Setting | Value |
+|---|---|
+| Auth | `Authorization: Bearer <key>` (default). `X-API-Key: <key>` also works. |
+| List agents | `GET /agents` → array at `agents` |
+| Get one agent | `GET /agents/{id}` |
+| Agent fields | id `id`, name `name`, description `description`, status `status` (`active`), model `model`, system prompt `instructions` |
+| Invoke / chat | `POST /agents/{id}/chat` with JSON body `{"input": "<user message>"}` |
+| Response text | `reply` (also `model`, `usage.inputTokens`, `usage.outputTokens`) |
+
+If Signet's Base URL must be the bare domain, use `https://<your-app>.up.railway.app` and prefix each path with `/api` (e.g. `/api/agents`).
+
+**4.** Click **Test connection & find agents**, select **Basic Agent (Groq)**, and continue to Signet's safety questions.
+
+---
+
 ## API
 
-When `ACCESS_TOKENS` is set, send `Authorization: Bearer <token>` with every request. Missing or wrong tokens get `401 { "error": "Missing or invalid access token." }`. `GET /api/health` is always public, for uptime checks.
+When `ACCESS_TOKENS` is set, send `Authorization: Bearer <token>` (or `X-API-Key: <token>`) with every request. Missing or wrong tokens get a `401` with `{ "error": "..." }`. `GET /api/health` is always public, for uptime checks.
+
+### `GET /api`
+Service info and the agent endpoints. Handy as a connection test.
+
+### `GET /api/agents` · `GET /api/agents/:id`
+`{ "agents": [{ "id": "basic-agent-groq", "name": "Basic Agent (Groq)", "description": "...", "status": "active", "type": "chat", "provider": "groq", "model": "openai/gpt-oss-120b", "instructions": "<system prompt>", "capabilities": ["chat","streaming"], "endpoint": "/api/agents/basic-agent-groq/chat" }] }`. Only providers that can answer right now are listed.
+
+### `POST /api/agents/:id/chat`
+Same as `POST /api/chat` below, with the provider fixed by the agent and **JSON by default** (send `"stream": true` for SSE). Accepts `{"input": "text"}` (or `message` / `prompt`) as well as `messages`.
 
 ### `GET /api/providers`
 Lists providers and whether each one is ready (`configured`; for Ollama also `reachable`).

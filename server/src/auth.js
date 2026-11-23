@@ -30,16 +30,29 @@ export function authConfigProblem() {
 }
 
 /**
- * Express middleware: when ACCESS_TOKENS is set, require
- * `Authorization: Bearer <token>` matching one of them.
+ * The token a client presented. Platforms differ in how they send an API key,
+ * so accept `Authorization: Bearer <token>`, `X-API-Key: <token>`, or a bare
+ * `Authorization: <token>`.
  */
+function presentedToken(req) {
+  const authorization = (req.get('authorization') || '').trim();
+  const bearer = /^Bearer\s+(.+)$/i.exec(authorization);
+  if (bearer) return bearer[1].trim();
+  const apiKey = (req.get('x-api-key') || '').trim();
+  if (apiKey) return apiKey;
+  return authorization && !/\s/.test(authorization) ? authorization : '';
+}
+
+/** Express middleware: when ACCESS_TOKENS is set, require one of them (see presentedToken). */
 export function requireAccessToken(req, res, next) {
   if (!tokenDigests.length) return next();
-  const match = /^Bearer\s+(.+)$/i.exec(req.get('authorization') || '');
-  if (match) {
+  const token = presentedToken(req);
+  if (token) {
     // Compare fixed-length hashes in constant time so timing doesn't reveal how much of a token matched.
-    const given = digest(match[1].trim());
+    const given = digest(token);
     if (tokenDigests.some((d) => crypto.timingSafeEqual(d, given))) return next();
   }
-  res.status(401).json({ error: 'Missing or invalid access token.' });
+  res.status(401).json({
+    error: 'Missing or invalid access token. Send it as "Authorization: Bearer <token>" or "X-API-Key: <token>".',
+  });
 }
