@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { config } from '../config.js';
+import { clientCredentialsEnabled, TOKEN_TTL_SECONDS } from '../credentials.js';
 import { providers } from '../providers/index.js';
 import { handleChat } from './chat.js';
 
@@ -52,10 +53,18 @@ function providerFor(agentId) {
   return providers[agentId.slice(ID_PREFIX.length)] ?? null;
 }
 
-agentsRouter.get('/', (_req, res) => {
+agentsRouter.get('/', (req, res) => {
   res.json({
     name: 'Basic Agent',
     endpoints: { agents: '/api/agents', agent: '/api/agents/{id}', chat: '/api/agents/{id}/chat' },
+    clientCredentials: {
+      enabled: clientCredentialsEnabled(),
+      tokenPath: '/api/oauth/token',
+      grantType: 'client_credentials',
+      tokenLifetimeSeconds: TOKEN_TTL_SECONDS,
+      // Only admins (ACCESS_TOKENS, or anyone on an open local server) may create them.
+      canCreate: req.auth?.kind !== 'client',
+    },
   });
 });
 

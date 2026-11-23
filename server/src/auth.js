@@ -1,7 +1,9 @@
 import crypto from 'node:crypto';
 import { config, LOOPBACK_HOSTS } from './config.js';
+import { basicCredentials, verifyAccessToken, verifyApiKey, verifyClient } from './credentials.js';
 
 const MIN_TOKEN_LENGTH = 16;
+const MIN_SIGNING_KEY_LENGTH = 32;
 const GENERATE_HINT =
   'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(24).toString(\'base64url\'))"';
 
@@ -18,6 +20,9 @@ export function authConfigProblem() {
   }
   if (config.accessTokens.some((t) => t.length < MIN_TOKEN_LENGTH)) {
     return `every ACCESS_TOKENS entry must be at least ${MIN_TOKEN_LENGTH} characters. ${GENERATE_HINT}`;
+  }
+  if (config.clientSigningKey && (/[<>]/.test(config.clientSigningKey) || config.clientSigningKey.length < MIN_SIGNING_KEY_LENGTH)) {
+    return `CLIENT_SIGNING_KEY must be a random value of at least ${MIN_SIGNING_KEY_LENGTH} characters. ${GENERATE_HINT}`;
   }
   if (!LOOPBACK_HOSTS.has(config.host) && !config.accessTokens.length && !config.allowNoAuth) {
     return (
@@ -43,16 +48,46 @@ function presentedToken(req) {
   return authorization && !/\s/.test(authorization) ? authorization : '';
 }
 
-/** Express middleware: when ACCESS_TOKENS is set, require one of them (see presentedToken). */
-export function requireAccessToken(req, res, next) {
-  if (!tokenDigests.length) return next();
+function isAccessToken(token) {
+  // Compare fixed-length hashes in constant time so timing doesn't reveal how much of a token matched.
+  const given = digest(token);
+  return tokenDigests.some((d) => crypto.timingSafeEqual(d, given));
+}
+
+/**
+ * Who is calling:
+ *   { kind: 'token' }              one of ACCESS_TOKENS (you, the admin)
+ *   { kind: 'client', clientId }   credentials made in the UI: API key, OAuth access
+ *                                  token, Basic client_id:client_secret, or
+ *                                  X-Client-Id + X-Client-Secret headers
+ *   null                           not allowed
+ */
+function identify(req) {
   const token = presentedToken(req);
   if (token) {
-    // Compare fixed-length hashes in constant time so timing doesn't reveal how much of a token matched.
-    const given = digest(token);
-    if (tokenDigests.some((d) => crypto.timingSafeEqual(d, given))) return next();
+    if (isAccessToken(token)) return { kind: 'token' };
+    const clientId = verifyApiKey(token) ?? verifyAccessToken(token);
+    if (clientId) return { kind: 'client', clientId };
+  }
+  const pair = basicCredentials(req) ?? { id: req.get('x-client-id'), secret: req.get('x-client-secret') };
+  if (verifyClient(pair.id, pair.secret)) return { kind: 'client', clientId: pair.id };
+  return null;
+}
+
+/** Express middleware: when ACCESS_TOKENS is set, require a valid caller and record it in req.auth. */
+export function requireAccessToken(req, res, next) {
+  if (!tokenDigests.length) {
+    req.auth = { kind: 'open' };
+    return next();
+  }
+  const auth = identify(req);
+  if (auth) {
+    req.auth = auth;
+    return next();
   }
   res.status(401).json({
-    error: 'Missing or invalid access token. Send it as "Authorization: Bearer <token>" or "X-API-Key: <token>".',
+    error:
+      'Missing or invalid credentials. Send "Authorization: Bearer <token or API key>", "X-API-Key: <key>", ' +
+      'or a Client ID and Secret (Basic auth, or an access token from /api/oauth/token).',
   });
 }

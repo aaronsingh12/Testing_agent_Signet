@@ -21,6 +21,14 @@ function num(name, fallback) {
   return Number.isFinite(value) ? value : fallback;
 }
 
+/** Read a comma-separated env var as a list of trimmed, non-empty values. */
+function list(name) {
+  return str(name)
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
 /** OLLAMA_THINK accepts true/false or a level name; blank means "model default". */
 function think(name) {
   const raw = str(name).toLowerCase();
@@ -78,11 +86,11 @@ export const config = {
   host: listenHost(),
   corsOrigin: str('CORS_ORIGIN'),
   // Comma-separated bearer tokens. When set, every /api route except /api/health needs one.
-  accessTokens: str('ACCESS_TOKENS')
-    .split(',')
-    .map((t) => t.trim())
-    .filter(Boolean),
+  accessTokens: list('ACCESS_TOKENS'),
   allowNoAuth: str('ALLOW_NO_AUTH').toLowerCase() === 'true',
+  // Master key for client credentials (Client ID/Secret, API keys) made in the UI.
+  clientSigningKey: str('CLIENT_SIGNING_KEY'),
+  revokedClientIds: new Set(list('REVOKED_CLIENT_IDS')),
 
   agent: {
     defaultProvider: str('DEFAULT_PROVIDER'),

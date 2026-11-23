@@ -32,9 +32,31 @@ async function readJson(res) {
   if (!res.ok) {
     const err = new Error(data.error || `Request failed (${res.status})`);
     if (res.status === 401) err.name = 'AuthError';
+    err.status = res.status;
+    err.code = data.code;
     throw err;
   }
   return data;
+}
+
+/** Service info, including whether Client ID/Secret credentials are enabled. */
+export async function getServiceInfo(signal) {
+  return readJson(await fetch('/api', { headers: authHeaders(), signal }));
+}
+
+export async function getAgents(signal) {
+  return readJson(await fetch('/api/agents', { headers: authHeaders(), signal }));
+}
+
+/** Create a Client ID/Secret (and API key) for a platform such as Signet. */
+export async function createClient(name) {
+  return readJson(
+    await fetch('/api/clients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ name }),
+    }),
+  );
 }
 
 export async function getProviders() {

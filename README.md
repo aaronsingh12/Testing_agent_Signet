@@ -50,6 +50,8 @@ npm start       # Express serves the API and the built UI on http://localhost:30
 | `PORT` / `HOST` | `3001` / `127.0.0.1` | Use `0.0.0.0` only when hosting, together with `ACCESS_TOKENS` |
 | `ACCESS_TOKENS` | – | Comma-separated tokens (16+ chars). When set, every `/api` route except `/api/health` requires `Authorization: Bearer <token>`. **Required** on a public `HOST`: without it the API stays disabled and every page explains what to set. |
 | `ALLOW_NO_AUTH` | `false` | `true` skips that check, only for when your own auth (proxy, VPN) protects the server |
+| `CLIENT_SIGNING_KEY` | – | 32+ random chars. Turns on **Client ID & Secret** credentials made in the UI (Connect → Credentials). Changing it revokes all of them. |
+| `REVOKED_CLIENT_IDS` | – | Comma-separated Client IDs to cut off individually |
 | `DEFAULT_PROVIDER` | first configured | `ollama`, `anthropic`, `openai`, `grok` or `groq` |
 | `AGENT_SYSTEM_PROMPT` | helpful assistant | Used when the UI system prompt is blank |
 | `AGENT_MAX_HISTORY` | `40` | Messages sent to the model per request |
@@ -99,9 +101,11 @@ basic-agent/
 │       ├── agent.js          # the agent: validates input, picks model, runs provider
 │       ├── errors.js         # turns SDK/network errors into readable messages
 │       ├── auth.js           # ACCESS_TOKENS check; API stays off on a public HOST without tokens
+│       ├── credentials.js    # Client ID/Secret, API keys and OAuth tokens (no storage needed)
 │       ├── routes/
 │       │   ├── chat.js       # POST /api/chat (SSE or JSON)
 │       │   ├── agents.js     # GET /api/agents, POST /api/agents/:id/chat (for Signet etc.)
+│       │   ├── clients.js    # POST /api/oauth/token, POST /api/clients
 │       │   └── providers.js  # GET /api/providers, /api/providers/:id/models
 │       └── providers/
 │           ├── index.js      # provider registry
@@ -115,7 +119,7 @@ basic-agent/
     └── src/
         ├── App.jsx           # state, sending, streaming
         ├── api.js            # fetch + SSE parser
-        └── components/       # Sidebar, MessageList, Composer, TokenGate
+        └── components/       # Sidebar, MessageList, Composer, TokenGate, ConnectPanel
 ```
 
 **Request flow:** `React UI → POST /api/chat → agent.js → providers/<name>.js → model API`, with tokens streamed back the same way.
@@ -185,20 +189,28 @@ Only set `CORS_ORIGIN` if a browser on another site must call the API directly. 
 
 Agent platforms discover agents over REST, then call them. This server lists **one agent per provider that is ready** (API key set, or Ollama running). With only `GROQ_API_KEY` set, that is a single agent, `basic-agent-groq`.
 
-**1. Make a token just for Signet** so you can revoke it on its own. Generate one with the command in [Deploy to Railway](#deploy-to-railway), add it to `ACCESS_TOKENS` in Railway (comma-separated, e.g. `ACCESS_TOKENS=<you>,<other-project>,<signet>`), and deploy.
+**Everything below is also in the app:** click **Connect** (top right). It shows the Base URL, the agents, and the mapping, with copy buttons, and generates credentials.
 
-**2. In Signet:** Agents → onboard → **REST API**:
+**1. Turn on credentials (once).** In Connect, the Credentials section shows a freshly generated `CLIENT_SIGNING_KEY`. Add it to Railway → Variables and deploy.
 
-| Field | Value |
+**2. Generate a Client ID & Secret.** In Connect, enter a platform name (e.g. `Signet`) and click **Generate Client ID & Secret**. You get:
+
+| Value | Use it for |
 |---|---|
-| Base URL | `https://<your-app>.up.railway.app/api` |
-| API key / secret | the Signet token from step 1 |
+| Client ID + Client Secret | Signet's **Client ID and Client Secret** option |
+| Token URL (`…/api/oauth/token`) | if Signet asks for a token endpoint (OAuth 2.0 `client_credentials`) |
+| API key (`<client id>.<secret>`) | Signet's **REST API** option, as "API key / secret" |
 
-**3. API settings and endpoint mapping** (only change what Signet asks for):
+Copy the secret right away: it is not shown again. Nothing is stored on the server (the secret is derived from `CLIENT_SIGNING_KEY`), so credentials survive redeploys. To cut one platform off, add its Client ID to `REVOKED_CLIENT_IDS`; to cut all of them off, change `CLIENT_SIGNING_KEY`.
+
+**3. In Signet**, Base URL is `https://<your-app>.up.railway.app/api`, plus the credentials from step 2.
+
+**API settings and endpoint mapping** (only change what Signet asks for):
 
 | Setting | Value |
 |---|---|
-| Auth | `Authorization: Bearer <key>` (default). `X-API-Key: <key>` also works. |
+| Auth | `Authorization: Bearer <API key or access token>` (default). Also accepted: `X-API-Key: <key>`, Basic `client_id:client_secret`, or `X-Client-Id` + `X-Client-Secret`. |
+| Token endpoint | `POST /oauth/token`, `grant_type=client_credentials`, client ID/secret via Basic auth or body; returns `access_token` (1 hour) |
 | List agents | `GET /agents` → array at `agents` |
 | Get one agent | `GET /agents/{id}` |
 | Agent fields | id `id`, name `name`, description `description`, status `status` (`active`), model `model`, system prompt `instructions` |
@@ -209,14 +221,22 @@ If Signet's Base URL must be the bare domain, use `https://<your-app>.up.railway
 
 **4.** Click **Test connection & find agents**, select **Basic Agent (Groq)**, and continue to Signet's safety questions.
 
+Without `CLIENT_SIGNING_KEY` you can still connect with the REST API option: add a dedicated token to `ACCESS_TOKENS` and use it as the API key.
+
 ---
 
 ## API
 
-When `ACCESS_TOKENS` is set, send `Authorization: Bearer <token>` (or `X-API-Key: <token>`) with every request. Missing or wrong tokens get a `401` with `{ "error": "..." }`. `GET /api/health` is always public, for uptime checks.
+When `ACCESS_TOKENS` is set, send `Authorization: Bearer <token>` (or `X-API-Key: <token>`) with every request. Credentials made in the UI work too (see the Auth row above). Missing or wrong credentials get a `401` with `{ "error": "..." }`. `GET /api/health` and `POST /api/oauth/token` are reachable without a token.
 
 ### `GET /api`
-Service info and the agent endpoints. Handy as a connection test.
+Service info, the agent endpoints, and `clientCredentials` (`enabled`, `tokenPath`, `canCreate`). Handy as a connection test.
+
+### `POST /api/oauth/token`
+OAuth 2.0 client credentials grant. Send `grant_type=client_credentials` with the Client ID and Secret as HTTP Basic auth, or as `client_id` / `client_secret` in a form-encoded or JSON body. Returns `{ "access_token", "token_type": "Bearer", "expires_in": 3600 }`.
+
+### `POST /api/clients`
+`{ "name": "Signet" }` → `201 { clientId, clientSecret, apiKey, tokenPath }`. Requires one of the `ACCESS_TOKENS` (a client can't create clients) and `CLIENT_SIGNING_KEY`.
 
 ### `GET /api/agents` · `GET /api/agents/:id`
 `{ "agents": [{ "id": "basic-agent-groq", "name": "Basic Agent (Groq)", "description": "...", "status": "active", "type": "chat", "provider": "groq", "model": "openai/gpt-oss-120b", "instructions": "<system prompt>", "capabilities": ["chat","streaming"], "endpoint": "/api/agents/basic-agent-groq/chat" }] }`. Only providers that can answer right now are listed.

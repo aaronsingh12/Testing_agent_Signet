@@ -8,6 +8,7 @@ import { config } from './config.js';
 import { defaultProviderId, providers } from './providers/index.js';
 import { chatRouter } from './routes/chat.js';
 import { agentsRouter } from './routes/agents.js';
+import { clientsRouter, oauthRouter } from './routes/clients.js';
 import { providersRouter } from './routes/providers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -38,10 +39,13 @@ if (setupProblem) {
 
   // Public on purpose: hosting platforms (e.g. Railway) call it without a token.
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
+  // Public too: callers authenticate with their Client ID and Secret.
+  app.use('/api', oauthRouter);
   app.use('/api', requireAccessToken);
   app.use('/api', providersRouter);
   app.use('/api', chatRouter);
   app.use('/api', agentsRouter);
+  app.use('/api', clientsRouter);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 
   // In production, serve the built React app from client/dist.

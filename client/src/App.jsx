@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getModels, getProviders, getToken, setToken, streamChat } from './api.js';
 import Composer from './components/Composer.jsx';
+import ConnectPanel from './components/ConnectPanel.jsx';
 import MessageList from './components/MessageList.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import TokenGate from './components/TokenGate.jsx';
@@ -31,6 +32,7 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [streaming, setStreaming] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [connectOpen, setConnectOpen] = useState(false);
   // Set when the server answers 401: show the access-token screen.
   const [auth, setAuth] = useState({ needed: false, rejected: false });
   const abortRef = useRef(null);
@@ -194,10 +196,16 @@ export default function App() {
               {providerInfo ? `${providerInfo.label} · ${shownModel || 'no model'}` : 'Connecting…'}
             </span>
           </div>
-          <button type="button" className="ghost-button" onClick={newChat} disabled={!messages.length}>
-            New chat
-          </button>
+          <div className="header-actions">
+            <button type="button" className="ghost-button" onClick={() => setConnectOpen(true)} disabled={!info}>
+              Connect
+            </button>
+            <button type="button" className="ghost-button" onClick={newChat} disabled={!messages.length}>
+              New chat
+            </button>
+          </div>
         </header>
+        {connectOpen && <ConnectPanel onClose={() => setConnectOpen(false)} onAuthError={requireToken} />}
 
         <MessageList
           messages={messages}
