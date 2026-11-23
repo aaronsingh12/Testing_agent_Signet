@@ -1,8 +1,7 @@
 import crypto from 'node:crypto';
-import { config } from './config.js';
+import { config, LOOPBACK_HOSTS } from './config.js';
 
 const MIN_TOKEN_LENGTH = 16;
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 const GENERATE_HINT =
   'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(24).toString(\'base64url\'))"';
 
@@ -14,6 +13,9 @@ const tokenDigests = config.accessTokens.map(digest);
  * A public HOST without access tokens would let anyone spend your API keys.
  */
 export function authConfigProblem() {
+  if (config.accessTokens.some((t) => /[<>]/.test(t))) {
+    return `ACCESS_TOKENS still contains a placeholder such as <token-1>. Replace each one with a real token. ${GENERATE_HINT}`;
+  }
   if (config.accessTokens.some((t) => t.length < MIN_TOKEN_LENGTH)) {
     return `every ACCESS_TOKENS entry must be at least ${MIN_TOKEN_LENGTH} characters. ${GENERATE_HINT}`;
   }

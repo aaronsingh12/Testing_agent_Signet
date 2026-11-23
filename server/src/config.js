@@ -54,9 +54,28 @@ function grokAndGroqKeys() {
 }
 const providerKeys = grokAndGroqKeys();
 
+export const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
+
+/**
+ * Address to listen on. Railway sets RAILWAY_* variables on every deployment;
+ * there the app must accept outside connections, so a missing HOST or a
+ * loopback one (e.g. copied from a local .env) becomes 0.0.0.0.
+ */
+function listenHost() {
+  const onRailway = Boolean(
+    process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_ENVIRONMENT_NAME || process.env.RAILWAY_ENVIRONMENT,
+  );
+  const host = str('HOST', onRailway ? '0.0.0.0' : '127.0.0.1');
+  if (onRailway && LOOPBACK_HOSTS.has(host)) {
+    console.warn(`[config] HOST=${host} would make the app unreachable on Railway, so listening on 0.0.0.0 instead.`);
+    return '0.0.0.0';
+  }
+  return host;
+}
+
 export const config = {
   port: num('PORT', 3001),
-  host: str('HOST', '127.0.0.1'),
+  host: listenHost(),
   corsOrigin: str('CORS_ORIGIN'),
   // Comma-separated bearer tokens. When set, every /api route except /api/health needs one.
   accessTokens: str('ACCESS_TOKENS')

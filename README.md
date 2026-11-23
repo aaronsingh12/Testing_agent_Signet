@@ -48,7 +48,7 @@ npm start       # Express serves the API and the built UI on http://localhost:30
 | Variable | Default | Notes |
 |---|---|---|
 | `PORT` / `HOST` | `3001` / `127.0.0.1` | Use `0.0.0.0` only when hosting, together with `ACCESS_TOKENS` |
-| `ACCESS_TOKENS` | – | Comma-separated tokens (16+ chars). When set, every `/api` route except `/api/health` requires `Authorization: Bearer <token>`. **Required** on a public `HOST`: the server refuses to start without it. |
+| `ACCESS_TOKENS` | – | Comma-separated tokens (16+ chars). When set, every `/api` route except `/api/health` requires `Authorization: Bearer <token>`. **Required** on a public `HOST`: without it the API stays disabled and every page explains what to set. |
 | `ALLOW_NO_AUTH` | `false` | `true` skips that check, only for when your own auth (proxy, VPN) protects the server |
 | `DEFAULT_PROVIDER` | first configured | `ollama`, `anthropic`, `openai`, `grok` or `groq` |
 | `AGENT_SYSTEM_PROMPT` | helpful assistant | Used when the UI system prompt is blank |
@@ -98,7 +98,7 @@ basic-agent/
 │       ├── config.js         # reads server/.env
 │       ├── agent.js          # the agent: validates input, picks model, runs provider
 │       ├── errors.js         # turns SDK/network errors into readable messages
-│       ├── auth.js           # ACCESS_TOKENS check + refuses public start without tokens
+│       ├── auth.js           # ACCESS_TOKENS check; API stays off on a public HOST without tokens
 │       ├── routes/
 │       │   ├── chat.js       # POST /api/chat (SSE or JSON)
 │       │   └── providers.js  # GET /api/providers, /api/providers/:id/models
