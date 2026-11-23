@@ -234,5 +234,3 @@ Input errors such as an unknown provider, a missing key or bad messages return a
 - **Make it more agentic:** `runAgent()` in `server/src/agent.js` is the single place where a conversation turns into a model call. Add tool calling, retrieval or memory there without touching the routes or the UI.
 - **Persist chats:** not included. Chats live in browser memory; only settings (and the access token, when used) are saved to `localStorage`.
 - **Auth:** shared access tokens (`ACCESS_TOKENS`) are built in, see `server/src/auth.js`. For per-user accounts, put a real auth provider in front.
-#   T e s t i n g _ a g e n t _ S i g n e t  
- 
